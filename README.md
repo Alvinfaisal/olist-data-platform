@@ -38,3 +38,18 @@ Tiga temuan data kotor yang jika tidak ditangani akan membuat hasil analisis Q1�
 3. **Kasus Duplikasi Pasangan `order_id` di Tabel Ulasan (Tabel `order_reviews`)**
    - **Mekanisme Salah:** Terdapat 2.965 transaksi di mana satu pesanan memiliki lebih dari satu baris ulasan karena pembeli mengulas beberapa produk sekaligus dalam satu paket kiriman.
    - **Dampak Bisnis:** Jika tabel `orders` di-join langsung dengan `order_reviews` tanpa agregasi string di hulu, baris transaksi tersebut akan melipatgandakan dirinya sendiri (*Multiplication Effect*). Saat fungsi `SUM(payment_value)` dijalankan, nominal omzet tahunan perusahaan di dashboard akan menggelembung jauh lebih besar dari uang asli yang masuk ke rekening bank perusahaan.
+
+
+
+### 📌 Tahap T1 — Pertanyaan Mengapa Bronze Harus Append-Only
+
+**Jawaban:**
+Lapisan *Bronze* wajib bersifat *Append-Only* (hanya diizinkan menambah data/versi baru berdasarkan stempel waktu, dan haram hukumnya menimpa atau menghapus data lama) untuk bertindak sebagai **Penyimpanan Sejarah Murni (*Immutable Single Source of Truth*)** [T0]. Jika pipa data di lapisan hilir (*Silver/Gold*) mengalami kerusakan akibat kegagalan kodingan, kita selalu bisa melakukan kalkulasi ulang (*reprocessing*) dari titik nol sejarah data aslinya [T0].
+
+**Skenario Nyata di Olist di mana Versi Lama Menyelamatkanmu:**
+Misalkan pada tanggal 20 Oktober 2026, tim IT aplikasi Olist merilis *update* fitur baru pada sistem ulasan konsumen [T0]. Namun, pembaruan tersebut membawa *bug* tersembunyi yang merusak sistem pengodean teks (*encoding issue*). Akibatnya, ribuan data komentar ulasan baru pelanggan (`review_comment_message`) yang masuk hari itu rusak menjadi kumpulan karakter aneh (Contoh: `ff`).
+
+Jika lapisan Bronze kita didesain secara buruk dengan sistem langsung menimpa file (*overwrite*), maka data ulasan suci dari hari-hari sebelumnya akan ikut rusak atau tertimpa oleh data sampah baru ini. 
+
+Karena lapisan Bronze kita bersifat *append-only* dan dipagari oleh sertifikat **`manifest.json`**, versi data lama sebelum terjadinya *bug* pembaruan aplikasi **tetap tersimpan aman di dalam bucket** [T0]. Tim *Data Engineer* bisa langsung mendeteksi perbedaan *checksum* MD5, melakukan *rollback* (memutar waktu kembali) ke versi *ingest* hari sebelumnya, dan mengisolasi data yang rusak [T0]. Langkah ini menyelamatkan departemen analisis bisnis (*Customer Experience*) dari kehilangan data historis kepuasan pelanggan Olist selamanya [T0].
+
